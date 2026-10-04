@@ -3,21 +3,56 @@ import type { WorkspaceDocument } from '../../shared/models'
 export const STORAGE_KEY = 'focusdesk.document.v1'
 const DATABASE_NAME = 'focusdesk-db'
 const STORE_NAME = 'workspace'
+export const SEED_REVISION = 'seed:00000000-0000-0000-0000-000000000001'
+const LEGACY_REVISION = 'legacy:00000000-0000-0000-0000-000000000001'
+
+export interface StoredValue {
+  document: WorkspaceDocument
+  revision: string | null
+  winnerClientId?: string
+}
+
+export interface CommitSuccess {
+  committed: true
+  document: WorkspaceDocument
+  revision: string
+  winnerClientId?: string
+}
+
+export interface CommitConflict {
+  committed: false
+  document: WorkspaceDocument
+  revision: string
+  winnerClientId?: string
+}
+
+export interface EmptyStorageConflict {
+  committed: false
+  document: null
+  revision: null
+}
 
 export interface StorageService {
-  read(): Promise<string | null>
+  read(): Promise<StoredValue | null>
   write(value: string): Promise<void>
+  commit(value: string, expectedRevision: string | null, winnerClientId?: string): Promise<CommitSuccess | CommitConflict | EmptyStorageConflict>
+}
+
+function createRevision(): string {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return `rev:${crypto.randomUUID()}`
+  return `rev:${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
 export class BrowserStorageService implements StorageService {
-  async read(): Promise<string | null> {
+  async read(): Promise<StoredValue | null> {
     try {
       const database = await openDatabase()
       const value = await readFromDatabase(database)
       database.close()
-      return typeof value === 'string' ? value : window.localStorage.getItem(STORAGE_KEY)
+      const parsed = parseStoredValue(typeof value === 'string' ? value : window.localStorage.getItem(STORAGE_KEY))
+      return parsed
     } catch {
-      return window.localStorage.getItem(STORAGE_KEY)
+      return parseStoredValue(window.localStorage.getItem(STORAGE_KEY))
     }
   }
 
@@ -30,6 +65,29 @@ export class BrowserStorageService implements StorageService {
       window.localStorage.setItem(STORAGE_KEY, value)
     }
   }
+
+  async commit(value: string, expectedRevision: string | null, winnerClientId?: string): Promise<CommitSuccess | CommitConflict | EmptyStorageConflict> {
+    const current = await this.read()
+    const currentRevision = current?.revision ?? null
+    const isLegacySeed = expectedRevision === SEED_REVISION && (currentRevision === null || currentRevision === LEGACY_REVISION)
+    if (currentRevision !== expectedRevision && !isLegacySeed) {
+      return current ? { committed: false, document: current.document, revision: currentRevision ?? LEGACY_REVISION, winnerClientId: current.winnerClientId } : { committed: false, document: null, revision: null }
+    }
+    const revision = createRevision()
+    const envelope = JSON.stringify({ document: JSON.parse(value) as WorkspaceDocument, revision, winnerClientId })
+    await this.write(envelope)
+    return { committed: true, document: JSON.parse(value) as WorkspaceDocument, revision, winnerClientId }
+  }
+}
+
+function parseStoredValue(raw: string | null): StoredValue | null {
+  if (!raw) return null
+  const parsed: unknown = JSON.parse(raw)
+  if (parsed && typeof parsed === 'object' && 'document' in parsed && 'revision' in parsed) {
+    const candidate = parsed as { document: WorkspaceDocument; revision: string | null; winnerClientId?: string }
+    return isWorkspaceDocument(candidate.document) ? { document: candidate.document, revision: typeof candidate.revision === 'string' ? candidate.revision : null, winnerClientId: candidate.winnerClientId } : null
+  }
+  return isWorkspaceDocument(parsed) ? { document: parsed, revision: LEGACY_REVISION } : null
 }
 
 function openDatabase(): Promise<IDBDatabase> {

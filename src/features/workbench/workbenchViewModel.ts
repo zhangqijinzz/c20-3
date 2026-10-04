@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import {
   createId,
-  createInitialDocument,
   createPlan,
   type DeskItem,
   type DeviceType,
@@ -14,7 +13,7 @@ import { clampDeskSize, clampItemDimension } from '../../shared/layoutRules'
 import { moveCanvasItem, rotateCanvasItem } from '../canvas/canvasViewModel'
 import { createMaterialDraft } from '../materials/materialsViewModel'
 import { inspectPlan } from '../inspection/inspectionViewModel'
-import { LocalWorkspaceRepository, type WorkspaceRepository } from './workspaceRepository'
+import { WorkspaceSynchronizer, type ConflictChoice, type ConflictState } from './workspaceSynchronizer'
 
 export interface WorkspaceViewModel {
   status: WorkspaceStatus
@@ -25,7 +24,12 @@ export interface WorkspaceViewModel {
   issueIds: string[]
   issueCount: number
   feedback: string
+  isReadOnly: boolean
   isPreviewOpen: boolean
+  conflictReason: string | null
+  conflict: ConflictState | null
+  currentClientId: string
+  resolveConflict: (choice: ConflictChoice) => void
   selectItem: (id: string | null) => void
   addItem: (type: DeviceType) => void
   removeItem: (id: string) => void
@@ -43,83 +47,87 @@ export interface WorkspaceViewModel {
 
 const emptyInspection = { analysis: { overlapIds: [], outOfBoundsIds: [], coveragePercent: 0, status: 'clear' as const }, issueIds: [], issueCount: 0 }
 
-export function useWorkspaceViewModel(repository?: WorkspaceRepository): WorkspaceViewModel {
-  const repositoryRef = useRef(repository ?? new LocalWorkspaceRepository())
-  const [status, setStatus] = useState<WorkspaceStatus>('loading')
-  const [document, setDocument] = useState<WorkspaceDocument | null>(null)
+export function useWorkspaceViewModel(synchronizer?: WorkspaceSynchronizer): WorkspaceViewModel {
+  const synchronizerRef = useRef<WorkspaceSynchronizer | null>(synchronizer ?? null)
+  if (!synchronizerRef.current) synchronizerRef.current = new WorkspaceSynchronizer()
+  const sync = synchronizerRef.current
+  const snapshot = useSyncExternalStore(sync.subscribe, sync.getSnapshot)
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
+  const [activePlanId, setActivePlanId] = useState<string | null>(null)
   const [isPreviewOpen, setIsPreviewOpen] = useState(false)
-  const [feedback, setFeedback] = useState('正在准备你的工作台…')
 
   useEffect(() => {
-    let active = true
-    void repositoryRef.current.load().then((loaded) => {
-      if (!active) return
-      const nextDocument = loaded ?? createInitialDocument()
-      setDocument(nextDocument)
-      setStatus('ready')
-      setFeedback(loaded ? '已恢复上次编辑状态' : '已创建示例工作台，可以直接拖动设备')
-    }).catch(() => {
-      if (!active) return
-      setDocument(createInitialDocument())
-      setStatus('error')
-      setFeedback('本地数据读取失败，当前使用临时工作台')
-    })
-    return () => { active = false }
-  }, [])
-
-  const activePlan = useMemo(
-    () => document?.plans.find((plan) => plan.id === document.activePlanId) ?? null,
-    [document],
-  )
-  const selectedItem = activePlan?.items.find((item) => item.id === selectedItemId) ?? null
-  const inspection = useMemo(() => activePlan ? inspectPlan(activePlan) : emptyInspection, [activePlan])
-  const { analysis, issueIds, issueCount } = inspection
-
-  const persist = useCallback(async (nextDocument: WorkspaceDocument, message: string) => {
-    setDocument(nextDocument)
-    setStatus('saving')
-    setFeedback(message)
-    try {
-      await repositoryRef.current.save(nextDocument)
-      setStatus('ready')
-    } catch {
-      setStatus('error')
-      setFeedback('自动保存失败，请检查浏览器本地存储权限')
+    const current = synchronizerRef.current
+    const flush = () => current?.flushNow()
+    window.addEventListener('pagehide', flush)
+    return () => {
+      window.removeEventListener('pagehide', flush)
     }
   }, [])
 
-  const updateActivePlan = useCallback((updater: (plan: WorkspacePlan) => WorkspacePlan, message: string) => {
-    if (!document || !activePlan) return
+  useEffect(() => () => synchronizerRef.current?.dispose(), [])
+
+  useEffect(() => {
+    if (snapshot && (!activePlanId || !snapshot.document.plans.some((plan) => plan.id === activePlanId))) {
+      setActivePlanId(snapshot.document.activePlanId)
+    }
+  }, [activePlanId, snapshot])
+
+  const document = snapshot?.document ?? null
+  const activePlan = useMemo(
+    () => document?.plans.find((plan) => plan.id === (activePlanId ?? document.activePlanId)) ?? document?.plans[0] ?? null,
+    [activePlanId, document],
+  )
+
+  useEffect(() => {
+    if (activePlan && selectedItemId && !activePlan.items.some((item) => item.id === selectedItemId)) setSelectedItemId(null)
+  }, [activePlan, selectedItemId])
+
+  const selectedItem = activePlan?.items.find((item) => item.id === selectedItemId) ?? null
+  const inspection = useMemo(() => activePlan ? inspectPlan(activePlan) : emptyInspection, [activePlan])
+  const { analysis, issueIds, issueCount } = inspection
+  const isReadOnly = snapshot?.isReadOnly ?? true
+  const feedback = snapshot?.notice ?? '正在准备你的工作台…'
+  const conflictReason = snapshot?.conflict ? '两个窗口同时修改了同一方案。请选择保留本窗口版本，或采用另一个窗口的版本。' : snapshot?.status === 'readonly' ? '另一个窗口正在编辑。已自动同步为只读，提交后此窗口会自动恢复编辑。' : null
+
+  const mutateActivePlan = useCallback((updater: (plan: WorkspacePlan) => WorkspacePlan, message: string) => {
+    if (!document || !activePlan || isReadOnly) return
     const nextPlan = { ...updater(activePlan), updatedAt: new Date().toISOString() }
     const nextDocument = { ...document, plans: document.plans.map((plan) => plan.id === nextPlan.id ? nextPlan : plan) }
-    void persist(nextDocument, message)
-  }, [activePlan, document, persist])
+    sync.mutate(nextDocument, message)
+  }, [activePlan, document, isReadOnly, sync])
+
+  const mutateDocument = useCallback((updater: (current: WorkspaceDocument) => WorkspaceDocument, nextActivePlanId: string | null, message: string) => {
+    if (!document || isReadOnly) return
+    sync.mutate(updater(document), message)
+    if (nextActivePlanId) setActivePlanId(nextActivePlanId)
+    setSelectedItemId(null)
+  }, [document, isReadOnly, sync])
 
   const selectItem = useCallback((id: string | null) => setSelectedItemId(id), [])
 
   const addItem = useCallback((type: DeviceType) => {
-    if (!activePlan) return
+    if (!activePlan || isReadOnly) return
     const draft = createMaterialDraft(type, activePlan.items.length)
-    updateActivePlan((plan) => ({ ...plan, items: [...plan.items, draft.item] }), draft.feedback)
+    mutateActivePlan((plan) => ({ ...plan, items: [...plan.items, draft.item] }), draft.feedback)
     setSelectedItemId(draft.item.id)
-  }, [activePlan, updateActivePlan])
+  }, [activePlan, isReadOnly, mutateActivePlan])
 
   const removeItem = useCallback((id: string) => {
-    updateActivePlan((plan) => ({ ...plan, items: plan.items.filter((item) => item.id !== id) }), '设备已移除')
+    mutateActivePlan((plan) => ({ ...plan, items: plan.items.filter((item) => item.id !== id) }), '设备已移除')
     setSelectedItemId((current) => current === id ? null : current)
-  }, [updateActivePlan])
+  }, [mutateActivePlan])
 
   const moveItem = useCallback((id: string, x: number, y: number) => {
-    updateActivePlan((plan) => ({ ...plan, items: moveCanvasItem(plan.items, id, x, y) }), '位置已更新')
-  }, [updateActivePlan])
+    mutateActivePlan((plan) => ({ ...plan, items: moveCanvasItem(plan.items, id, x, y) }), '位置已更新')
+  }, [mutateActivePlan])
 
   const rotateItem = useCallback((id: string, delta: number) => {
-    updateActivePlan((plan) => ({ ...plan, items: rotateCanvasItem(plan.items, id, delta) }), '角度已更新')
-  }, [updateActivePlan])
+    mutateActivePlan((plan) => ({ ...plan, items: rotateCanvasItem(plan.items, id, delta) }), '角度已更新')
+  }, [mutateActivePlan])
 
   const updateItem = useCallback((id: string, patch: Partial<Pick<DeskItem, 'widthMm' | 'heightMm' | 'x' | 'y'>>) => {
-    updateActivePlan((plan) => ({
+    mutateActivePlan((plan) => ({
       ...plan,
       items: plan.items.map((item) => item.id === id ? {
         ...item,
@@ -128,22 +136,21 @@ export function useWorkspaceViewModel(repository?: WorkspaceRepository): Workspa
         heightMm: patch.heightMm === undefined ? item.heightMm : clampItemDimension(patch.heightMm, item.heightMm),
       } : item),
     }), '尺寸参数已更新')
-  }, [updateActivePlan])
+  }, [mutateActivePlan])
 
   const updateDesk = useCallback((field: 'deskWidthMm' | 'deskHeightMm', value: number) => {
-    if (!activePlan) return
-    updateActivePlan((plan) => ({ ...plan, [field]: clampDeskSize(value, plan[field]) }), '桌面尺寸已更新')
-  }, [activePlan, updateActivePlan])
+    if (!activePlan || isReadOnly) return
+    mutateActivePlan((plan) => ({ ...plan, [field]: clampDeskSize(value, plan[field]) }), '桌面尺寸已更新')
+  }, [activePlan, isReadOnly, mutateActivePlan])
 
   const createNewPlan = useCallback(() => {
-    if (!document) return
+    if (!document || isReadOnly) return
     const plan = createPlan(`工作台 ${document.plans.length + 1}`, false)
-    void persist({ ...document, plans: [...document.plans, plan], activePlanId: plan.id }, '已创建空白方案')
-    setSelectedItemId(null)
-  }, [document, persist])
+    mutateDocument((current) => ({ ...current, plans: [...current.plans, plan] }), plan.id, '已创建空白方案')
+  }, [document, isReadOnly, mutateDocument])
 
   const duplicatePlan = useCallback(() => {
-    if (!document || !activePlan) return
+    if (!document || !activePlan || isReadOnly) return
     const copy: WorkspacePlan = {
       ...activePlan,
       id: createId('plan'),
@@ -151,28 +158,39 @@ export function useWorkspaceViewModel(repository?: WorkspaceRepository): Workspa
       items: activePlan.items.map((item) => ({ ...item, id: createId('item') })),
       updatedAt: new Date().toISOString(),
     }
-    void persist({ ...document, plans: [...document.plans, copy], activePlanId: copy.id }, '方案已复制')
-    setSelectedItemId(null)
-  }, [activePlan, document, persist])
+    mutateDocument((current) => ({ ...current, plans: [...current.plans, copy] }), copy.id, '方案已复制')
+  }, [activePlan, document, isReadOnly, mutateDocument])
 
   const selectPlan = useCallback((id: string) => {
-    if (!document || !document.plans.some((plan) => plan.id === id)) return
-    void persist({ ...document, activePlanId: id }, '已切换方案')
+    if (!document?.plans.some((plan) => plan.id === id)) return
+    setActivePlanId(id)
     setSelectedItemId(null)
-  }, [document, persist])
+  }, [document])
 
   const deleteCurrentPlan = useCallback(() => {
-    if (!document || !activePlan || document.plans.length <= 1) {
-      setFeedback('至少保留一个工作台方案')
-      return
-    }
+    if (!document || !activePlan || document.plans.length <= 1 || isReadOnly) return
     const remaining = document.plans.filter((plan) => plan.id !== activePlan.id)
-    void persist({ ...document, plans: remaining, activePlanId: remaining[0].id }, '方案已删除')
-    setSelectedItemId(null)
-  }, [activePlan, document, persist])
+    mutateDocument((current) => ({ ...current, plans: current.plans.filter((plan) => plan.id !== activePlan.id) }), remaining[0].id, '方案已删除')
+  }, [activePlan, document, isReadOnly, mutateDocument])
+
+  const resolveConflict = useCallback((choice: ConflictChoice) => {
+    void sync.resolveConflict(choice)
+  }, [sync])
 
   const openPreview = useCallback(() => setIsPreviewOpen(true), [])
   const closePreview = useCallback(() => setIsPreviewOpen(false), [])
+
+  const status: WorkspaceStatus = snapshot?.status === 'saving'
+    ? 'saving'
+    : snapshot?.status === 'readonly'
+      ? 'readonly'
+      : snapshot?.status === 'conflict'
+        ? 'conflict'
+        : snapshot?.saveError
+          ? 'error'
+          : document
+            ? 'ready'
+            : 'loading'
 
   return {
     status,
@@ -183,7 +201,12 @@ export function useWorkspaceViewModel(repository?: WorkspaceRepository): Workspa
     issueIds,
     issueCount,
     feedback,
+    isReadOnly,
     isPreviewOpen,
+    conflictReason,
+    conflict: snapshot?.conflict ?? null,
+    currentClientId: sync.clientId,
+    resolveConflict,
     selectItem,
     addItem,
     removeItem,

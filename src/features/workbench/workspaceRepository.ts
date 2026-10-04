@@ -1,27 +1,35 @@
 import { createInitialDocument, type WorkspaceDocument } from '../../shared/models'
-import { BrowserStorageService, isWorkspaceDocument, type StorageService } from './storageService'
+import { BrowserStorageService, isWorkspaceDocument, SEED_REVISION, type CommitSuccess, type EmptyStorageConflict, type StorageService } from './storageService'
+
+export interface SaveConflict {
+  committed: false
+  document: WorkspaceDocument
+  revision: string
+  winnerClientId?: string
+}
+
+export type SaveResult = CommitSuccess | SaveConflict | EmptyStorageConflict
 
 export interface WorkspaceRepository {
-  load(): Promise<WorkspaceDocument | null>
-  save(document: WorkspaceDocument): Promise<void>
+  load(): Promise<{ document: WorkspaceDocument | null; revision: string | null }>
+  save(document: WorkspaceDocument, expectedRevision: string | null, winnerClientId?: string): Promise<SaveResult>
 }
 
 export class LocalWorkspaceRepository implements WorkspaceRepository {
   constructor(private readonly storage: StorageService = new BrowserStorageService()) {}
 
-  async load(): Promise<WorkspaceDocument | null> {
+  async load(): Promise<{ document: WorkspaceDocument | null; revision: string | null }> {
     try {
-      const raw = await this.storage.read()
-      if (!raw) return null
-      const parsed: unknown = JSON.parse(raw)
-      return isWorkspaceDocument(parsed) ? parsed : null
+      const stored = await this.storage.read()
+      if (!stored) return { document: null, revision: null }
+      return isWorkspaceDocument(stored.document) ? stored : { document: null, revision: stored.revision }
     } catch {
-      return null
+      return { document: null, revision: null }
     }
   }
 
-  async save(document: WorkspaceDocument): Promise<void> {
-    await this.storage.write(JSON.stringify(document))
+  async save(document: WorkspaceDocument, expectedRevision: string | null, winnerClientId?: string): Promise<SaveResult> {
+    return this.storage.commit(JSON.stringify(document), expectedRevision ?? SEED_REVISION, winnerClientId)
   }
 }
 

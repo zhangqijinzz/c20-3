@@ -10,11 +10,12 @@ interface CanvasStageProps {
   analysis: LayoutAnalysis
   onSelect: (id: string | null) => void
   onMove: (id: string, x: number, y: number) => void
+  readOnly?: boolean
 }
 
 interface DragState { id: string; offsetX: number; offsetY: number }
 
-export function CanvasStage({ plan, selectedItemId, analysis, onSelect, onMove }: CanvasStageProps) {
+export function CanvasStage({ plan, selectedItemId, analysis, onSelect, onMove, readOnly = false }: CanvasStageProps) {
   const stageRef = useRef<SVGSVGElement>(null)
   const [drag, setDrag] = useState<DragState | null>(null)
   const scaleToMm = useCallback((clientX: number, clientY: number) => {
@@ -38,6 +39,7 @@ export function CanvasStage({ plan, selectedItemId, analysis, onSelect, onMove }
 
   const startDrag = (event: ReactPointerEvent<SVGGElement>, item: DeskItem) => {
     event.stopPropagation()
+    if (readOnly) return
     const point = scaleToMm(event.clientX, event.clientY)
     if (!point) return
     onSelect(item.id)
@@ -61,7 +63,7 @@ export function CanvasStage({ plan, selectedItemId, analysis, onSelect, onMove }
           const hasIssue = analysis.overlapIds.includes(item.id) || analysis.outOfBoundsIds.includes(item.id)
           const cx = item.x + item.widthMm / 2
           const cy = item.y + item.heightMm / 2
-          return <g className={`desk-item ${isSelected ? 'is-selected' : ''} ${hasIssue ? 'has-issue' : ''}`} key={item.id} onPointerDown={(event) => startDrag(event, item)} role="button" tabIndex={0} aria-label={`${definition.label}，${item.widthMm}乘${item.heightMm}毫米`}>
+          return <g className={`desk-item ${isSelected ? 'is-selected' : ''} ${hasIssue ? 'has-issue' : ''} ${readOnly ? 'is-readonly' : ''}`} key={item.id} onPointerDown={(event) => startDrag(event, item)} role={readOnly ? 'img' : 'button'} tabIndex={readOnly ? undefined : 0} aria-label={`${definition.label}，${item.widthMm}乘${item.heightMm}毫米`}>
             <g transform={`translate(${cx} ${cy}) rotate(${item.rotation})`}>
               <rect x={-item.widthMm / 2} y={-item.heightMm / 2} width={item.widthMm} height={item.heightMm} rx={Math.min(24, item.heightMm / 5)} fill={definition.color} filter="url(#item-shadow)" />
               <rect className="item-inner-line" x={-item.widthMm / 2 + 12} y={-item.heightMm / 2 + 12} width={Math.max(0, item.widthMm - 24)} height={Math.max(0, item.heightMm - 24)} rx={12} fill="none" />

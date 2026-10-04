@@ -1,6 +1,6 @@
 export type DeviceType = 'monitor' | 'keyboard' | 'lamp' | 'speaker' | 'stand'
 
-export type WorkspaceStatus = 'loading' | 'ready' | 'saving' | 'error'
+export type WorkspaceStatus = 'loading' | 'ready' | 'saving' | 'readonly' | 'conflict' | 'error'
 
 export interface DeskItem {
   id: string
@@ -72,13 +72,13 @@ export function createId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
-export function createItem(type: DeviceType, index = 0): DeskItem {
+export function createItem(type: DeviceType, index = 0, id = createId('item')): DeskItem {
   const definition = getDeviceDefinition(type)
   const columns = 3
   const x = 80 + (index % columns) * 280
   const y = 90 + Math.floor(index / columns) * 240
   return {
-    id: createId('item'),
+    id,
     type,
     widthMm: definition.widthMm,
     heightMm: definition.heightMm,
@@ -88,7 +88,7 @@ export function createItem(type: DeviceType, index = 0): DeskItem {
   }
 }
 
-export function createPlan(name = '我的工作台', withDemo = true): WorkspacePlan {
+export function createPlan(name = '我的工作台', withDemo = true, id = createId('plan')): WorkspacePlan {
   const items = withDemo ? [createItem('monitor', 0), createItem('keyboard', 1)] : []
   if (withDemo) {
     items[0].x = 530
@@ -97,7 +97,7 @@ export function createPlan(name = '我的工作台', withDemo = true): Workspace
     items[1].y = 470
   }
   return {
-    id: createId('plan'),
+    id,
     name,
     deskWidthMm: DEFAULT_DESK.widthMm,
     deskHeightMm: DEFAULT_DESK.heightMm,
@@ -107,6 +107,19 @@ export function createPlan(name = '我的工作台', withDemo = true): Workspace
 }
 
 export function createInitialDocument(): WorkspaceDocument {
-  const plan = createPlan('我的工作台', true)
+  const monitor = createItem('monitor', 0, 'item-seed-monitor')
+  const keyboard = createItem('keyboard', 1, 'item-seed-keyboard')
+  monitor.x = 530
+  monitor.y = 105
+  keyboard.x = 580
+  keyboard.y = 470
+  const plan: WorkspacePlan = {
+    id: 'plan-seed-workbench',
+    name: '我的工作台',
+    deskWidthMm: DEFAULT_DESK.widthMm,
+    deskHeightMm: DEFAULT_DESK.heightMm,
+    items: [monitor, keyboard],
+    updatedAt: new Date(0).toISOString(),
+  }
   return { version: 1, plans: [plan], activePlanId: plan.id }
 }

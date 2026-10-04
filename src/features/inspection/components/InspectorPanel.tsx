@@ -10,13 +10,14 @@ interface InspectorPanelProps {
   onUpdateItem: (id: string, patch: Partial<Pick<DeskItem, 'widthMm' | 'heightMm' | 'x' | 'y'>>) => void
   onRotate: (id: string, delta: number) => void
   onDelete: (id: string) => void
+  readOnly?: boolean
 }
 
-function NumericField({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) {
-  return <label className="numeric-field"><span>{label}</span><input type="number" value={value} min={40} onChange={(event) => onChange(event.currentTarget.valueAsNumber)} /><em>mm</em></label>
+function NumericField({ label, value, disabled = false, onChange }: { label: string; value: number; disabled?: boolean; onChange: (value: number) => void }) {
+  return <label className="numeric-field"><span>{label}</span><input type="number" value={value} min={40} disabled={disabled} onChange={(event) => onChange(event.currentTarget.valueAsNumber)} /><em>mm</em></label>
 }
 
-export function InspectorPanel({ plan, item, issueIds, onUpdateDesk, onUpdateItem, onRotate, onDelete }: InspectorPanelProps) {
+export function InspectorPanel({ plan, item, issueIds, readOnly = false, onUpdateDesk, onUpdateItem, onRotate, onDelete }: InspectorPanelProps) {
   const isIssue = item ? issueIds.includes(item.id) : false
   const definition = item ? getDeviceDefinition(item.type) : null
   return (
@@ -26,10 +27,10 @@ export function InspectorPanel({ plan, item, issueIds, onUpdateDesk, onUpdateIte
         <Ruler size={18} className="muted-icon" />
       </div>
       <div className="desk-size-card">
-        <div className="field-heading"><span>桌面画布</span><span className="field-status">实时</span></div>
+        <div className="field-heading"><span>桌面画布</span><span className="field-status">{readOnly ? '只读同步' : '实时'}</span></div>
         <div className="desk-size-fields">
-          <NumericField label="宽度" value={plan.deskWidthMm} onChange={(value) => onUpdateDesk('deskWidthMm', value)} />
-          <NumericField label="深度" value={plan.deskHeightMm} onChange={(value) => onUpdateDesk('deskHeightMm', value)} />
+          <NumericField disabled={readOnly} label="宽度" value={plan.deskWidthMm} onChange={(value) => onUpdateDesk('deskWidthMm', value)} />
+          <NumericField disabled={readOnly} label="深度" value={plan.deskHeightMm} onChange={(value) => onUpdateDesk('deskHeightMm', value)} />
         </div>
         <p className="helper-text">建议保留 40 mm 走线缓冲空间</p>
       </div>
@@ -39,16 +40,16 @@ export function InspectorPanel({ plan, item, issueIds, onUpdateDesk, onUpdateIte
           {isIssue && <div className="issue-callout"><AlertTriangle size={16} /><span>设备与其他元素重叠或超出桌面边界</span></div>}
           <div className="field-heading"><span>实际尺寸</span><span className="unit-label">单位：毫米</span></div>
           <div className="two-column-fields">
-            <NumericField label="宽度" value={item.widthMm} onChange={(value) => onUpdateItem(item.id, { widthMm: value })} />
-            <NumericField label="深度" value={item.heightMm} onChange={(value) => onUpdateItem(item.id, { heightMm: value })} />
+            <NumericField disabled={readOnly} label="宽度" value={item.widthMm} onChange={(value) => onUpdateItem(item.id, { widthMm: value })} />
+            <NumericField disabled={readOnly} label="深度" value={item.heightMm} onChange={(value) => onUpdateItem(item.id, { heightMm: value })} />
           </div>
           <div className="field-heading position-heading"><span>位置</span><span className="unit-label">左上角坐标</span></div>
           <div className="two-column-fields">
-            <NumericField label="X" value={Math.round(item.x)} onChange={(value) => onUpdateItem(item.id, { x: value })} />
-            <NumericField label="Y" value={Math.round(item.y)} onChange={(value) => onUpdateItem(item.id, { y: value })} />
+            <NumericField disabled={readOnly} label="X" value={Math.round(item.x)} onChange={(value) => onUpdateItem(item.id, { x: value })} />
+            <NumericField disabled={readOnly} label="Y" value={Math.round(item.y)} onChange={(value) => onUpdateItem(item.id, { y: value })} />
           </div>
-          <div className="rotation-row"><span><Crosshair size={15} /> 旋转角度 <strong>{Math.round(item.rotation)}°</strong></span><div className="rotation-actions"><button aria-label="逆时针旋转 15 度" onClick={() => onRotate(item.id, -15)} type="button"><RotateCcw size={15} /></button><button aria-label="顺时针旋转 15 度" onClick={() => onRotate(item.id, 15)} type="button"><RotateCw size={15} /></button></div></div>
-          <button className="remove-item-button" onClick={() => onDelete(item.id)} type="button"><Trash2 size={15} /> 移除这个设备</button>
+          <div className="rotation-row"><span><Crosshair size={15} /> 旋转角度 <strong>{Math.round(item.rotation)}°</strong></span><div className="rotation-actions"><button aria-label="逆时针旋转 15 度" disabled={readOnly} onClick={() => onRotate(item.id, -15)} type="button"><RotateCcw size={15} /></button><button aria-label="顺时针旋转 15 度" disabled={readOnly} onClick={() => onRotate(item.id, 15)} type="button"><RotateCw size={15} /></button></div></div>
+          <button className="remove-item-button" disabled={readOnly} onClick={() => onDelete(item.id)} type="button"><Trash2 size={15} /> 移除这个设备</button>
         </div>
       ) : (
         <div className="empty-inspector"><span className="empty-illustration">⌖</span><strong>选择一个设备</strong><p>点击画布上的设备查看尺寸、位置和旋转控制。</p></div>

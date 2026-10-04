@@ -8,9 +8,10 @@ interface PlanSidebarProps {
   onCreate: () => void
   onDuplicate: () => void
   onDelete: () => void
+  readOnly?: boolean
 }
 
-export function PlanSidebar({ plans, activePlanId, onSelect, onCreate, onDuplicate, onDelete }: PlanSidebarProps) {
+export function PlanSidebar({ plans, activePlanId, readOnly = false, onSelect, onCreate, onDuplicate, onDelete }: PlanSidebarProps) {
   return (
     <aside className="plans-sidebar">
       <div className="brand-lockup"><span className="brand-mark"><LayoutGrid size={18} /></span><span>FocusDesk</span></div>
@@ -24,10 +25,10 @@ export function PlanSidebar({ plans, activePlanId, onSelect, onCreate, onDuplica
           </button>
         ))}
       </div>
-      <button className="new-plan-button" onClick={onCreate} type="button"><Plus size={16} /> 新建方案</button>
+      <button className="new-plan-button" disabled={readOnly} onClick={onCreate} type="button"><Plus size={16} /> 新建方案</button>
       <div className="sidebar-footer">
-        <button className="ghost-action" onClick={onDuplicate} type="button"><Copy size={15} /> 复制当前方案</button>
-        <button className="ghost-action danger-action" onClick={onDelete} type="button"><Trash2 size={15} /> 删除当前方案</button>
+        <button className="ghost-action" disabled={readOnly} onClick={onDuplicate} type="button"><Copy size={15} /> 复制当前方案</button>
+        <button className="ghost-action danger-action" disabled={readOnly} onClick={onDelete} type="button"><Trash2 size={15} /> 删除当前方案</button>
       </div>
     </aside>
   )
