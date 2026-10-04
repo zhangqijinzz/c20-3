@@ -30,3 +30,29 @@ button { cursor: pointer; }
 @media (max-width: 1180px) { .editor-grid { grid-template-columns: 190px minmax(320px, 1fr); }.inspector-panel { grid-column: 1 / -1; }.item-editor { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 20px; }.item-editor > .field-heading, .item-editor > .selected-item-heading, .item-editor > .issue-callout, .item-editor > .remove-item-button { grid-column: 1 / -1; }.item-editor > .field-heading { margin-top: 0; }.desk-size-card { margin-bottom: 0; } }
 @media (max-width: 800px) { .plans-sidebar { width: 185px; flex-basis: 185px; }.topbar { padding: 0 20px; }.workspace-content { padding: 28px 20px 40px; }.page-heading { display: block; }.feedback-chip { margin-top: 18px; max-width: none; }.metrics-row { grid-template-columns: repeat(2, 1fr); }.editor-grid { grid-template-columns: 1fr; }.palette-panel { order: 2; }.stage-panel { order: 1; }.inspector-panel { order: 3; grid-column: auto; }.device-list { grid-template-columns: repeat(2, 1fr); }.palette-tip { display: none; } }
 @media (max-width: 560px) { .app-shell { display: block; }.plans-sidebar { width: auto; padding: 14px 15px; }.brand-lockup { padding: 0 4px 14px; }.sidebar-label, .plan-list, .new-plan-button, .sidebar-footer { display: none; }.topbar { height: 58px; padding: 0 15px; }.breadcrumb { font-size: 10px; }.topbar-actions { gap: 8px; }.save-state { display: none; }.preview-button { padding: 8px; font-size: 0; }.workspace-content { padding: 24px 15px 30px; }.page-heading h1 { font-size: 26px; }.metrics-row { gap: 8px; margin-top: 22px; }.metric-card, .coverage-card { min-height: 94px; padding: 13px; }.metric-card strong, .coverage-card strong { font-size: 18px; }.metrics-row { grid-template-columns: 1fr 1fr; }.stage-header { padding: 15px; }.canvas-wrap { padding: 8px; }.canvas-toolbar { font-size: 8px; }.canvas-legend { gap: 9px; font-size: 8px; }.item-editor { display: block; }.item-editor > .field-heading { margin-top: 19px; }.inspector-panel { padding: 16px; } }
+
+/* ---- 多窗口同步：只读 / 冲突提示 ---- */
+.spin-icon { animation: spin 1s linear infinite; }
+.save-readonly { color: #c2763a !important; }
+.readonly-crumb { display: inline-flex; align-items: center; gap: 4px; margin-left: 4px; padding: 2px 8px; border-radius: 20px; color: #c2763a; background: #fdf1e6; font-size: 10px; font-weight: 600; }
+.app-shell.is-readonly .desk-item { cursor: default; }
+.desk-item.is-readonly { cursor: default; }
+.desk-item.is-readonly:hover .item-inner-line { stroke: rgba(255,255,255,.55); }
+button:disabled { cursor: not-allowed; opacity: .45; }
+.numeric-field input:disabled { color: #9aa9b8; background: #f4f6f9; cursor: not-allowed; }
+.conflict-banner { margin: 0 38px; padding: 14px 18px; border: 1px solid #f2c8a3; border-radius: 12px; background: linear-gradient(100deg, #fff7ef, #fffdf9); box-shadow: 0 6px 20px rgba(194, 118, 58, .08); }
+.conflict-banner-main { display: flex; gap: 12px; align-items: flex-start; }
+.conflict-banner-icon { display: grid; place-items: center; width: 30px; height: 30px; flex: 0 0 auto; border-radius: 9px; color: #c2763a; background: #fde6d2; }
+.conflict-banner-copy strong { color: #8f5320; font-size: 13px; letter-spacing: -.2px; }
+.conflict-readonly-tag { margin-left: 8px; padding: 2px 7px; border-radius: 5px; color: #c2763a; background: #fbe6d4; font: 600 9px 'DM Mono', monospace; letter-spacing: 1px; }
+.conflict-banner-copy p { margin: 5px 0 0; color: #9a7456; font-size: 11px; line-height: 1.6; }
+.conflict-banner-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 12px; padding-left: 42px; }
+.conflict-choice { display: flex; align-items: center; gap: 9px; padding: 9px 13px; border: 1px solid #e6c8a8; border-radius: 9px; color: #8f5320; background: #fff; text-align: left; }
+.conflict-choice span { display: grid; gap: 2px; }
+.conflict-choice strong { font-size: 11px; }
+.conflict-choice small { color: #b09a82; font-size: 9px; }
+.conflict-choice:hover { border-color: #d29a5f; background: #fffaf4; }
+.conflict-choice-local { border-color: #c9d7ea; color: #3b5b8c; }
+.conflict-choice-local:hover { border-color: #94b2d8; background: #f6f9fd; }
+.conflict-banner-hint { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; color: #b5a48f; font-size: 10px; }
+.conflict-channel-warning { margin: 9px 0 0; padding-left: 42px; color: #b08968; font-size: 10px; }

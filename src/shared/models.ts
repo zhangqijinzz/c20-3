@@ -1,6 +1,6 @@
 export type DeviceType = 'monitor' | 'keyboard' | 'lamp' | 'speaker' | 'stand'
 
-export type WorkspaceStatus = 'loading' | 'ready' | 'saving' | 'error'
+export type WorkspaceStatus = 'loading' | 'ready' | 'saving' | 'error' | 'readonly'
 
 export interface DeskItem {
   id: string
